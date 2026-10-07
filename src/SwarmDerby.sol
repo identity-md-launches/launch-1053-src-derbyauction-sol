@@ -34,7 +34,7 @@ interface IArbSys {
 ///           the sequencer builds that block without knowing the salt, and an unrevealed swing
 ///           counts as a foul, so nobody can steer a roll and hiding a bad one never pays.
 ///           A swing scores on the UTC day it was committed.
-///  Slams:   a 550+ ft swing pays half of its league's vault instantly.
+///  Slams:   a 550+ ft swing pays 10% of its league's vault instantly.
 ///  Daily:   the contract's own board ranks each day. Once a day is over and its last swing
 ///           can no longer be revealed, anyone calls settleNextDay(league): that day's top 3
 ///           are paid 60 / 25 / 15 from 90% of the day's pot (plus anything rolled over), the
@@ -54,14 +54,15 @@ contract SwarmDerby {
     uint256 public constant BURN_BPS = 4000;
     uint256 public constant POT_BPS = 4500;
     uint256 public constant VAULT_BPS = 1000; // ops gets the remaining 500
-    uint256 public constant SLAM_VAULT_SHARE_BPS = 5000;
+    uint256 public constant SLAM_VAULT_SHARE_BPS = 1000;
     uint256 public constant PAYOUT_BPS = 9000; // share of a day's pot paid out; 10% rolls over
     uint256 public constant SETTLE_TIP_BPS = 50;
 
     /// @notice L2 blocks between a swing and the block whose hash decides it (~0.5s at 100ms).
     uint256 public constant REVEAL_DELAY = 5;
-    /// @notice After this many blocks past target (~24s), an unrevealed swing counts as a foul.
-    uint256 public constant FINALIZE_WINDOW = 240;
+    /// @notice After this many blocks past target (~25s at 100ms), an unrevealed swing counts
+    ///         as a foul. ArbSys serves the hashes of the last 256 blocks.
+    uint256 public constant FINALIZE_WINDOW = 255;
     uint256 public constant BOARD_SIZE = 10;
 
     bytes32 internal constant DOMAIN_TYPEHASH =
@@ -85,6 +86,7 @@ contract SwarmDerby {
     // ───────── state ─────────
     IERC20 public immutable imd;
     address public owner;
+    address public pendingOwner; // named by transferOwnership, takes over on acceptOwnership
     uint256 public singlePrice; // per turn
     uint256 public packPrice;   // per PACK_SIZE turns
 
@@ -132,6 +134,8 @@ contract SwarmDerby {
     /// @param rollover the league's rollover after this day: what the next day starts with
     event DaySettled(uint8 indexed league, uint256 indexed day, address[] winners, uint256[] amounts,
         address settler, uint256 tip, uint256 rollover);
+    event OwnershipTransferStarted(address indexed previousOwner, address indexed newOwner);
+    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
 
     error NotOwner();
     error BadLeague();
@@ -149,6 +153,8 @@ contract SwarmDerby {
     error NothingToSettle();
     error DayNotOver();
     error ZeroAddress();
+    error NotAContract();
+    error ZeroCount();
 
     modifier onlyOwner() {
         if (msg.sender != owner) revert NotOwner();
@@ -164,9 +170,11 @@ contract SwarmDerby {
     ///               this, msg.sender is the factory (use `$owner` in the launch request).
     constructor(address owner_, IERC20 imd_, uint256 singlePrice_, uint256 packPrice_) {
         if (owner_ == address(0) || address(imd_) == address(0)) revert ZeroAddress();
+        if (address(imd_).code.length == 0) revert NotAContract(); // e.g. the other chain's IMD
         _checkPrices(singlePrice_, packPrice_);
         imd = imd_;
         owner = owner_;
+        emit OwnershipTransferred(address(0), owner_);
         singlePrice = singlePrice_;
         packPrice = packPrice_;
     }
@@ -186,6 +194,7 @@ contract SwarmDerby {
     /// @dev The caller pays; the turns go to the player it acts for, so a session key
     ///      buying turns tops up its player instead of stranding them on the key.
     function _buy(uint8 league, uint256 count, uint256 cost) internal {
+        if (count == 0) revert ZeroCount();
         address player = playerOf(msg.sender);
         uint256 burned = (cost * BURN_BPS) / 10_000;
         uint256 toPot = (cost * POT_BPS) / 10_000;
@@ -322,8 +331,13 @@ contract SwarmDerby {
         if (tier == DerbyOdds.SLAM) {
             uint256 payout = (vault[s.league] * SLAM_VAULT_SHARE_BPS) / 10_000;
             vault[s.league] -= payout;
+            // Like settlement: if the token refuses the transfer, the prize stays in the
+            // vault and the homer still counts.
+            if (!_trySend(s.player, payout)) {
+                vault[s.league] += payout;
+                payout = 0;
+            }
             emit GrandSlam(swingId, s.player, s.league, feet, payout);
-            _send(s.player, payout);
         }
         emit SwingResolved(swingId, s.player, tier, feet);
     }
@@ -500,7 +514,21 @@ contract SwarmDerby {
         _send(to, amount);
     }
 
-    function transferOwnership(address to) external onlyOwner { owner = to; }
+    /// @notice Step 1 of an ownership move: name the new owner (address(0) cancels). Nothing
+    ///         changes until that address calls acceptOwnership, so a typo can't lose the
+    ///         ops share. There is no renounce: the owner can always withdraw ops.
+    function transferOwnership(address to) external onlyOwner {
+        pendingOwner = to;
+        emit OwnershipTransferStarted(owner, to);
+    }
+
+    /// @notice Step 2: the named address takes over as owner.
+    function acceptOwnership() external {
+        if (msg.sender != pendingOwner) revert NotOwner();
+        emit OwnershipTransferred(owner, msg.sender);
+        owner = msg.sender;
+        pendingOwner = address(0);
+    }
 
     // ───────── internals ─────────
 

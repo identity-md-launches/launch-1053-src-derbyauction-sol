@@ -163,6 +163,8 @@ contract SwarmDerbyTest is Test {
         new SwarmDerby(address(0), IERC20(address(imd)), 0.15 ether, 0.5 ether);
         vm.expectRevert(SwarmDerby.ZeroAddress.selector);
         new SwarmDerby(address(this), IERC20(address(0)), 0.15 ether, 0.5 ether);
+        vm.expectRevert(SwarmDerby.NotAContract.selector); // e.g. the Ethereum IMD address
+        new SwarmDerby(address(this), IERC20(address(0xD34a99Bc0f67aE1bbd63C660e6d0b0dd03E263B7)), 0.15 ether, 0.5 ether);
         vm.expectRevert(SwarmDerby.BadPrice.selector);
         new SwarmDerby(address(this), IERC20(address(imd)), 0, 0.5 ether);
         vm.expectRevert(SwarmDerby.BadPrice.selector);
@@ -180,6 +182,30 @@ contract SwarmDerbyTest is Test {
         derby.setPrices(0.01 ether, 0.05 ether);
         assertEq(derby.singlePrice(), 0.01 ether);
         assertEq(derby.packPrice(), 0.05 ether);
+    }
+
+    function test_ownershipIsTwoStep() public {
+        derby.transferOwnership(address(0xB0B));
+        assertEq(derby.owner(), address(this)); // nothing changes until the new owner accepts
+        assertEq(derby.pendingOwner(), address(0xB0B));
+        vm.prank(address(0xBAD));
+        vm.expectRevert(SwarmDerby.NotOwner.selector);
+        derby.acceptOwnership();
+        vm.prank(address(0xB0B));
+        derby.acceptOwnership();
+        assertEq(derby.owner(), address(0xB0B));
+        assertEq(derby.pendingOwner(), address(0));
+        vm.expectRevert(SwarmDerby.NotOwner.selector);
+        derby.setPrices(0.2 ether, 0.6 ether);
+    }
+
+    function test_ownershipMoveCanBeCancelled() public {
+        derby.transferOwnership(address(0xB0B));
+        derby.transferOwnership(address(0)); // cancels; there is no way to renounce
+        vm.prank(address(0xB0B));
+        vm.expectRevert(SwarmDerby.NotOwner.selector);
+        derby.acceptOwnership();
+        assertEq(derby.owner(), address(this));
     }
 
     function test_ownerOnlyReachesOps() public {
@@ -317,11 +343,32 @@ contract SwarmDerbyTest is Test {
         derby.finalize(id, SALT);
     }
 
+    function test_zeroCountPurchaseReverts() public {
+        vm.startPrank(player);
+        vm.expectRevert(SwarmDerby.ZeroCount.selector);
+        derby.buyTurns(0, 0);
+        vm.expectRevert(SwarmDerby.ZeroCount.selector);
+        derby.buyPacks(1, 0);
+        vm.stopPrank();
+        assertEq(derby.openDays(0).length, 0);
+        assertEq(derby.openDays(1).length, 0);
+    }
+
+    function test_revealAtWindowEdgeStillCounts() public {
+        vm.prank(player);
+        derby.buyTurns(0, 1);
+        _rig(0, 100, DerbyOdds.HOMER, "edge");
+        uint256 id = _swing(100, 100, SALT);
+        arb.setBlock(1_005 + derby.FINALIZE_WINDOW()); // the chain still serves the hash
+        (uint8 tier, ) = derby.finalize(id, SALT);
+        assertGe(tier, DerbyOdds.HOMER);
+    }
+
     function test_lateRevealIsFoul() public {
         vm.prank(player);
         derby.buyTurns(0, 1);
         uint256 id = _swing(100, 100, SALT);
-        arb.setBlock(1_005 + 241);
+        arb.setBlock(1_005 + derby.FINALIZE_WINDOW() + 1);
         (uint8 tier, uint16 feet) = derby.finalize(id, SALT);
         assertEq(tier, DerbyOdds.FOUL);
         assertEq(feet, 0);
@@ -331,16 +378,16 @@ contract SwarmDerbyTest is Test {
         vm.prank(player);
         derby.buyTurns(0, 1);
         uint256 id = _swing(100, 100, SALT);
-        arb.setBlock(1_005 + 240);
+        arb.setBlock(1_005 + derby.FINALIZE_WINDOW());
         vm.expectRevert(SwarmDerby.NotExpired.selector);
         derby.expire(id);
-        arb.setBlock(1_005 + 241);
+        arb.setBlock(1_005 + derby.FINALIZE_WINDOW() + 1);
         derby.expire(id);
         vm.expectRevert(SwarmDerby.WrongStatus.selector);
         derby.finalize(id, SALT);
     }
 
-    function test_slamPaysHalfOfItsLeagueVault() public {
+    function test_slamPaysTenPercentOfItsLeagueVault() public {
         _buy(player, 0, 100); // 15 IMD into arcade -> vault 1.5
         _buy(player, 1, 100); // 15 IMD into agent  -> vault 1.5
         _rig(0, 1, DerbyOdds.SLAM, "slam");
@@ -349,9 +396,23 @@ contract SwarmDerbyTest is Test {
         uint256 before = imd.balanceOf(player);
         (uint8 tier, ) = derby.finalize(id, SALT);
         assertEq(tier, DerbyOdds.SLAM);
-        assertEq(imd.balanceOf(player) - before, 0.75 ether);
-        assertEq(derby.vault(0), 0.75 ether);
+        assertEq(imd.balanceOf(player) - before, 0.15 ether);
+        assertEq(derby.vault(0), 1.35 ether);
         assertEq(derby.vault(1), 1.5 ether); // agent vault untouched
+    }
+
+    /// A slam the token refuses to pay keeps its prize in the vault, and the homer counts.
+    function test_unpayableSlamKeepsPrizeAndHomer() public {
+        _buy(player, 0, 100);
+        uint16 feet = _rig(0, 1, DerbyOdds.SLAM, "slam");
+        uint256 id = _swing(1, 100, SALT);
+        imd.block_(player);
+        arb.setBlock(1_006);
+        (uint8 tier, ) = derby.finalize(id, SALT);
+        assertEq(tier, DerbyOdds.SLAM);
+        assertEq(derby.vault(0), 1.5 ether);
+        assertEq(derby.dayScore(0, DAY0, player), feet);
+        assertEq(imd.balanceOf(address(derby)), derby.pot(0) + derby.vault(0) + derby.opsBalance());
     }
 
     function test_swingStoresVelo() public {
@@ -613,10 +674,10 @@ contract SwarmDerbyTest is Test {
         derby.buyTurns(0, 1);
         uint256 id = _swing(100, 100, SALT); // target 1_005
         vm.warp((DAY0 + 1) * 1 days + 1);
-        arb.setBlock(1_005 + 240);
+        arb.setBlock(1_005 + derby.FINALIZE_WINDOW());
         vm.expectRevert(SwarmDerby.DayNotOver.selector);
         derby.settleNextDay(0);
-        arb.setBlock(1_005 + 241);
+        arb.setBlock(1_005 + derby.FINALIZE_WINDOW() + 1);
         derby.settleNextDay(0);
         (uint8 tier, ) = derby.finalize(id, SALT); // too late to score
         assertEq(tier, DerbyOdds.FOUL);

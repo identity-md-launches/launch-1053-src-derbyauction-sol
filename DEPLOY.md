@@ -9,7 +9,7 @@ public RPC `https://rpc.mainnet.chain.robinhood.com` · explorer `https://robinh
 |---|---|
 | `src/SwarmDerby.sol` | the game: two leagues, turns, swings, scoreboards, slam vaults, settlement |
 | `src/DerbyOdds.sol` | the odds table; the browser runs identical math |
-| `test/` | 48 Foundry tests (two fuzzed) |
+| `test/` | 53 Foundry tests (two fuzzed) |
 | `e2e/` | full rehearsal on a local devnet with the real page and a scripted wallet |
 | `imd-check.mjs` | free readiness check against IMD's API |
 | `HANDOFF.md` | ordered go-live checklist for the swarm agent |
@@ -47,12 +47,13 @@ expensive; it does not make it impossible (one person can run several wallets).
 
 **Prices.** 1 turn = 0.15 IMD, 5 = 0.5 IMD. The owner can change both with `setPrices`, but
 never below 0.01 IMD a turn (0.05 a pack). Every purchase is split 40% burned, 45% to that
-league's pot for the current UTC day, 10% to its slam vault, 5% ops.
+league's pot for the current UTC day, 10% to its slam vault, 5% ops. A grand slam (550+ ft)
+instantly pays 10% of its league's slam vault.
 
 **A swing, with no server.** The player picks a secret salt and calls
 `swing(league, quality, velo, commit)` with `commit = keccak256(abi.encode(salt, player))`.
 The roll uses the hash of the block 5 blocks later (~0.5s). The player then calls
-`finalize(swingId, salt)`. Not revealed within 240 blocks (~24s) counts as a foul, and
+`finalize(swingId, salt)`. Not revealed within 255 blocks (~25s) counts as a foul, and
 `expire` closes it out. Nobody, including the deployer, can predict or steer a roll. A swing
 scores on the UTC day it was committed, the same day its arcade cap slot was used.
 
@@ -73,7 +74,7 @@ the key can leave with `leaveSession()`, and the player can revoke it with
 leaderboards with one call per league and no indexer. The same board pays the day's prizes.
 
 **Daily payout.** Each UTC day with a purchase or a swing joins its league's queue. When a day
-is over and its last swing can no longer be revealed (240 blocks after its target),
+is over and its last swing can no longer be revealed (255 blocks after its target),
 anyone calls `settleNextDay(league)`. The oldest open day is paid: 90% of that day's pot plus
 rollover goes to the board's top 3 (60 / 25 / 15) after a 0.5% tip to the caller. The other
 10%, unfilled places and any prize the token refuses to deliver roll over to the next day. A
@@ -115,7 +116,7 @@ address is set the page stays practice-only.
 
 ## 5. Paying out
 
-Nothing to schedule and no oracle. After 00:00 UTC (plus ~24s for the last reveals), the
+Nothing to schedule and no oracle. After 00:00 UTC (plus ~25s for the last reveals), the
 game page reads `nextSettlement(league)` and shows any visitor a **Pay the winners** button
 in the leaderboard. Whoever presses it calls `settleNextDay(league)` from their own wallet and
 earns 0.5% of the payout. Agents can do the same from code. If no one does, the day waits in
@@ -129,5 +130,12 @@ the queue; nothing expires.
   bounds what that is worth, and the arcade cap applies to everyone.
 - The arcade cap is per wallet. Multiple wallets get around it at full price.
 - The owner can change prices (never below 0.01 IMD a turn), withdraw the 5% ops share and
-  transfer ownership. The owner cannot touch pots or vaults. Hand ownership to a multisig,
-  or renounce it.
+  move ownership in two steps (`transferOwnership`, then `acceptOwnership` from the new
+  address). The owner cannot touch pots or vaults, and ownership cannot be renounced.
+- A purchase pays the price in force when it lands, so a price change also applies to a buy
+  already sent from the page. Change prices only when nobody is buying.
+- The Robinhood IMD token's owner can block addresses or stop transfers. Blocking the derby
+  or `0xdead` stops purchases, payouts and ops withdrawals. A blocked player's slam prize
+  stays in the vault, and a blocked winner's daily prize rolls over.
+- A session key's consent signature has no deadline: it stays usable until the key is bound
+  once.

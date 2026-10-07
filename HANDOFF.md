@@ -33,7 +33,7 @@ Create two **public** GitHub repos from the two folders:
 - `swarm-derby-contracts` (Foundry repo at the root)
 - `swarm-derby-site` (static site at the root)
 
-Check: `forge test` passes (48), and `python3 dev/build.py dev/game.html ../index.html`
+Check: `forge test` passes (53), and `python3 dev/build.py dev/game.html ../index.html`
 in the site repo reproduces `index.html` exactly.
 
 ## 2. Readiness check (free)
@@ -126,6 +126,7 @@ tip on the explorer, and that the button moves on to the next open day or disapp
 ## 9. After launch
 
 - `withdrawOps` releases the 5% ops share (Robinhood IMD).
-- Once things are stable, move `owner` to a multisig or renounce it with `transferOwnership`.
+- Once things are stable, move `owner` to a multisig: `transferOwnership(multisig)`, then the
+  multisig calls `acceptOwnership()`. Ownership cannot be renounced.
 - Site updates: change `dev/game.html`, rebuild, push, and rerun step 6 with
   `job.continue` (`ipfs: true` keeps the same name).
