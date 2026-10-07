@@ -89,9 +89,10 @@ In the site repo: set `DERBY_CONFIG.networks.robinhood.derby` in `dev/game.html`
 POST /requests/import  {"url": "https://github.com/OWNER/swarm-derby-site", "kind": "site"}
 ```
 
-Then `job.open` with an `import-site` step before the check. A job with only a
-`site-content-check` step writes no files, so IMD has nothing to publish and the site stays
-queued ("the job produced no artifact to publish").
+Then `job.open` with an `import-site` step before the check. The IMD docs require
+`import-site` only when the import reports `site.build: true` (this repo reports `false`), but
+a job with only a `site-content-check` step wrote no files, so IMD had nothing to publish and
+the site stayed queued ("the job produced no artifact to publish"). Keep both steps.
 
 ```json
 {
@@ -107,8 +108,9 @@ queued ("the job produced no artifact to publish").
 ```
 
 Check: `GET /sites/by-label/swarm-derby` returns the new CID, and
-`https://swarm-derby.site.identitymd.eth.limo` loads the game with practice mode working and
-the leaderboard showing the live board.
+`https://swarm-derby.site.identitymd.eth.limo` (ENS) or `https://swarm-derby.sites.imd.fun`
+(IMD's sites gateway, same CID) loads the game with practice mode working and the leaderboard
+showing the live board.
 
 ## 7. Smoke test with small amounts
 
@@ -132,4 +134,6 @@ tip on the explorer, and that the button moves on to the next open day or disapp
 - Once things are stable, move `owner` to a multisig: `transferOwnership(multisig)`, then the
   multisig calls `acceptOwnership()`. Ownership cannot be renounced.
 - Site updates: change `dev/game.html`, rebuild, push, and rerun step 6 on the new commit
-  with the same `ipfs` name. The new site replaces the old one under that name.
+  with the same `ipfs` name. The new site replaces the old one under that name. Dry-run with
+  `POST /requests/check` first. `job.continue` cannot pin a new commit (it refuses `repoUrl`
+  and `baseCommit`), and only the wallet that paid the hosting job can pay for it.

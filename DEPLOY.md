@@ -83,7 +83,8 @@ exactly once. `nextSettlement(league)` shows what the next call pays and whether
 
 ## 3. Deploy through IMD (`launch.open`, `evm_contracts`)
 
-Push this folder to a **public** GitHub repo (without `e2e/Mocks.sol` in `src/`), then pin it:
+Push this folder to a **public** GitHub repo (without `e2e/Mocks.sol` in `src/`), then pin it.
+IMD launches only a Foundry repo with `bytecode_hash = "none"` in `foundry.toml` (already set):
 
 ```
 POST /requests/import  {"url": "https://github.com/YOU/swarm-derby-contracts", "kind": "contracts"}
