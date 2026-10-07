@@ -170,7 +170,6 @@ contract SwarmDerby {
     ///               this, msg.sender is the factory (use `$owner` in the launch request).
     constructor(address owner_, IERC20 imd_, uint256 singlePrice_, uint256 packPrice_) {
         if (owner_ == address(0) || address(imd_) == address(0)) revert ZeroAddress();
-        if (address(imd_).code.length == 0) revert NotAContract(); // e.g. the other chain's IMD
         _checkPrices(singlePrice_, packPrice_);
         imd = imd_;
         owner = owner_;
@@ -548,6 +547,10 @@ contract SwarmDerby {
     }
 
     function _pull(address from, uint256 amount) internal {
+        // A token address with no code (e.g. the other chain's IMD) accepts every call, so
+        // refuse to credit a purchase until the token exists. Checked here, not in the
+        // constructor, so deploy rehearsals without the token's code still work.
+        if (address(imd).code.length == 0) revert NotAContract();
         (bool ok, bytes memory data) = address(imd).call(abi.encodeCall(IERC20.transferFrom, (from, address(this), amount)));
         if (!ok || (data.length != 0 && !abi.decode(data, (bool)))) revert TransferFailed();
     }

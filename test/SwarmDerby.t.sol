@@ -163,8 +163,6 @@ contract SwarmDerbyTest is Test {
         new SwarmDerby(address(0), IERC20(address(imd)), 0.15 ether, 0.5 ether);
         vm.expectRevert(SwarmDerby.ZeroAddress.selector);
         new SwarmDerby(address(this), IERC20(address(0)), 0.15 ether, 0.5 ether);
-        vm.expectRevert(SwarmDerby.NotAContract.selector); // e.g. the Ethereum IMD address
-        new SwarmDerby(address(this), IERC20(address(0xD34a99Bc0f67aE1bbd63C660e6d0b0dd03E263B7)), 0.15 ether, 0.5 ether);
         vm.expectRevert(SwarmDerby.BadPrice.selector);
         new SwarmDerby(address(this), IERC20(address(imd)), 0, 0.5 ether);
         vm.expectRevert(SwarmDerby.BadPrice.selector);
@@ -341,6 +339,20 @@ contract SwarmDerbyTest is Test {
         arb.setBlock(1_010);
         vm.expectRevert(SwarmDerby.BadSalt.selector);
         derby.finalize(id, SALT);
+    }
+
+    /// A token address with no code (e.g. the Ethereum IMD on Robinhood) deploys, but no
+    /// purchase is ever credited, so there are no free turns and no unbacked pots.
+    function test_tokenWithoutCodeRefusesPurchases() public {
+        SwarmDerby d = new SwarmDerby(address(this), IERC20(address(0xD34a99Bc0f67aE1bbd63C660e6d0b0dd03E263B7)), 0.15 ether, 0.5 ether);
+        vm.startPrank(player);
+        vm.expectRevert(SwarmDerby.NotAContract.selector);
+        d.buyTurns(0, 1);
+        vm.expectRevert(SwarmDerby.NotAContract.selector);
+        d.buyPacks(1, 1);
+        vm.stopPrank();
+        assertEq(d.turns(0, player), 0);
+        assertEq(d.pot(0) + d.vault(0) + d.opsBalance(), 0);
     }
 
     function test_zeroCountPurchaseReverts() public {

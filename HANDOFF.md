@@ -33,7 +33,7 @@ Create two **public** GitHub repos from the two folders:
 - `swarm-derby-contracts` (Foundry repo at the root)
 - `swarm-derby-site` (static site at the root)
 
-Check: `forge test` passes (53), and `python3 dev/build.py dev/game.html ../index.html`
+Check: `forge test` passes (54), and `python3 dev/build.py dev/game.html ../index.html`
 in the site repo reproduces `index.html` exactly.
 
 ## 2. Readiness check (free)

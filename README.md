@@ -6,7 +6,7 @@ feet), commit-reveal swings with no operator, quick-swing session keys, live on-
 scoreboards, slam vaults, and daily payouts from those scoreboards that anyone can trigger.
 
 ```
-forge test               # 53 tests, two fuzzed (forge-std is vendored in lib/)
+forge test               # 54 tests, two fuzzed (forge-std is vendored in lib/)
 node imd-check.mjs       # free readiness check against IMD
 ```
 

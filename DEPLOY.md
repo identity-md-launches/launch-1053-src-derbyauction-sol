@@ -9,7 +9,7 @@ public RPC `https://rpc.mainnet.chain.robinhood.com` · explorer `https://robinh
 |---|---|
 | `src/SwarmDerby.sol` | the game: two leagues, turns, swings, scoreboards, slam vaults, settlement |
 | `src/DerbyOdds.sol` | the odds table; the browser runs identical math |
-| `test/` | 53 Foundry tests (two fuzzed) |
+| `test/` | 54 Foundry tests (two fuzzed) |
 | `e2e/` | full rehearsal on a local devnet with the real page and a scripted wallet |
 | `imd-check.mjs` | free readiness check against IMD's API |
 | `HANDOFF.md` | ordered go-live checklist for the swarm agent |
@@ -137,5 +137,8 @@ the queue; nothing expires.
 - The Robinhood IMD token's owner can block addresses or stop transfers. Blocking the derby
   or `0xdead` stops purchases, payouts and ops withdrawals. A blocked player's slam prize
   stays in the vault, and a blocked winner's daily prize rolls over.
+- The constructor accepts any non-zero token address, so a deploy rehearsal on an empty
+  chain works. If the address has no code (e.g. the Ethereum IMD), every purchase reverts
+  `NotAContract()`. Check `imd()` on the explorer right after the deploy.
 - A session key's consent signature has no deadline: it stays usable until the key is bound
   once.
