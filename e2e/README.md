@@ -11,6 +11,7 @@ anvil --silent &
 python3 e2e/setup.py                                   # deploys mocks + SwarmDerby, writes e2e/addrs.json
 python3 e2e/play.py                                    # connect, buy, quick swings, swing, miss
 python3 e2e/recover.py                                 # reload mid-swing, reveal on return
+python3 e2e/recover_unmined.py                         # reload before the commit receipt arrives
 python3 e2e/board.py                                   # leaderboard + pot match the contract
 python3 e2e/leagues.py                                 # 20-swing cap, arcade vs agent boards
 RPC_URL=http://127.0.0.1:8545 PRIVATE_KEY=<anvil key #1> DERBY=<addr> MAX_IMD=1 node ../swarm-derby-site/agent-bot.mjs

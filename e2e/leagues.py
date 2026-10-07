@@ -32,4 +32,14 @@ with sync_playwright() as p:
     pg.click('#lbTabAgent'); pg.wait_for_timeout(100)
     print('AGENTS tab:', pg.evaluate("document.getElementById('lbMetric').textContent"), '|', pg.evaluate("document.getElementById('lbRows').innerText.replace(/\\s+/g,' ').trim()"), '| pot', pg.evaluate("document.getElementById('lbTabPot').textContent"), '| link shown:', pg.evaluate("document.getElementById('lbAgentLink').style.display !== 'none'"))
     print('expected arcade best:', max(homers or [0]))
+    # 00:00 UTC passes with the page open: it re-reads the allowance, the old cap stops blocking
+    print('stale cap blocks:', pg.evaluate("live.swingsLeft = 0; live.swingsDay = '1970-01-01'; capReached()"))
+    globals()['stop']=True; time.sleep(0.4)
+    chain_day=int(rpc('eth_getBlockByNumber',['latest',False])['timestamp'],16)//86400
+    rpc('evm_setNextBlockTimestamp',[(chain_day+1)*86400+5]); rpc('evm_mine')
+    globals()['stop']=False; threading.Thread(target=miner,daemon=True).start()
+    pg.evaluate("liveDay = '1970-01-01'")   # the browser clock crosses midnight
+    pg.wait_for_function("live.swingsLeft === 20", timeout=10000)
+    pg.evaluate("oracleModal.classList.add('hidden'); gameState=STATES.RESULT; handleUserAction()"); pg.wait_for_timeout(200)
+    print('after midnight: left today', pg.evaluate("live.swingsLeft"), '| cap HUD', pg.evaluate("document.getElementById('capHud').textContent"), '| state', pg.evaluate("Object.keys(STATES).find(k => STATES[k] === gameState)"))
     print('errors', errs); stop=True; b.close()
