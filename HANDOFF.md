@@ -89,23 +89,26 @@ In the site repo: set `DERBY_CONFIG.networks.robinhood.derby` in `dev/game.html`
 POST /requests/import  {"url": "https://github.com/OWNER/swarm-derby-site", "kind": "site"}
 ```
 
-If the import reports no build step, `job.open` with:
+Then `job.open` with an `import-site` step before the check. A job with only a
+`site-content-check` step writes no files, so IMD has nothing to publish and the site stays
+queued ("the job produced no artifact to publish").
 
 ```json
 {
-  "objective": "Host the Swarm Derby static site exactly as committed: index.html (self-contained game), agent.md and agent-bot.mjs. No build and no changes to the files.",
+  "objective": "Host the Swarm Derby static site. No build: copy exactly index.html, agent.md, agent-bot.mjs, LICENSE and NOTICES.md from the repository root into dist/, byte for byte. Do not put dev/ or README.md in dist/ and do not edit any file.",
   "repoUrl": "https://github.com/OWNER/swarm-derby-site",
   "baseCommit": "COMMIT_FROM_IMPORT",
   "shape": "chain",
-  "steps": [{ "skill": "site-content-check" }],
+  "steps": [{ "skill": "import-site" }, { "skill": "site-content-check" }],
   "ipfs": "swarm-derby",
-  "github": false
+  "github": false,
+  "acceptanceCriteria": ["dist/ holds exactly the five files above, each byte-identical to the root file."]
 }
 ```
 
-(If it reports `site.build: true`, add an `import-site` step before the check.)
-Check: `GET /sites/by-label/swarm-derby` resolves, and `swarm-derby.sites.imd.fun` loads the
-game with practice mode working and the leaderboard showing the live (empty) board.
+Check: `GET /sites/by-label/swarm-derby` returns the new CID, and
+`https://swarm-derby.site.identitymd.eth.limo` loads the game with practice mode working and
+the leaderboard showing the live board.
 
 ## 7. Smoke test with small amounts
 
@@ -128,5 +131,5 @@ tip on the explorer, and that the button moves on to the next open day or disapp
 - `withdrawOps` releases the 5% ops share (Robinhood IMD).
 - Once things are stable, move `owner` to a multisig: `transferOwnership(multisig)`, then the
   multisig calls `acceptOwnership()`. Ownership cannot be renounced.
-- Site updates: change `dev/game.html`, rebuild, push, and rerun step 6 with
-  `job.continue` (`ipfs: true` keeps the same name).
+- Site updates: change `dev/game.html`, rebuild, push, and rerun step 6 on the new commit
+  with the same `ipfs` name. The new site replaces the old one under that name.
