@@ -1,7 +1,7 @@
-/* DerbyOdds — browser twin of contracts/DerbyOdds.sol. Keep the two in lockstep. */
+/* DerbyOdds — browser twin of src/DerbyOdds.sol. Keep the two in lockstep. */
 const DerbyOdds = (() => {
-  const C0   = [3000, 4500, 6002, 9880, 10000]; // cumulative bps at quality 0: foul, pop, homer, bomb, slam
-  const C100 = [1200, 3800, 9200, 9980, 10000]; // cumulative bps at quality 100
+  const C0   = [3000, 5000, 9500, 9980, 10000]; // cumulative bps at quality 0: foul, pop, homer, bomb, slam
+  const C100 = [1000, 3500, 8920, 9920, 10000]; // cumulative bps at quality 100
   const TIERS = ['WHIFF', 'FOUL', 'POP', 'HOMER', 'BOMB', 'SLAM'];
   const POWER_LINE = 60; // exit-velo score (0-100) needed before a bomb or slam is possible
   const RANGE = { 1: [90, 81], 2: [180, 121], 3: [375, 75], 4: [450, 100], 5: [550, 71] };

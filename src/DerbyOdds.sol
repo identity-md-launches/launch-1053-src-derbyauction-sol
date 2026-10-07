@@ -3,13 +3,16 @@ pragma solidity 0.8.26;
 
 /// @title DerbyOdds
 /// @notice Swing outcome table for Swarm Derby. The browser runs the exact same math
-///         (see `DerbyOdds` in swarm_derby.html), so a result shown on screen is the
-///         result the contract pays.
-/// @dev Quality (1-100) comes from exit velocity + contact timing. It only changes
-///      variance: expected home-run feet per swing is ~262.6 at every quality, so a
-///      client that always claims quality 100 gains nothing in expectation. Clean
-///      swings bust less; sloppy swings bust more but hit bombs and slams more often.
-///      Separately, a swing under POWER_LINE exit velo can't produce a bomb or slam.
+///         (see `DerbyOdds` in the site's game.html and web/derby-odds.js), so a result
+///         shown on screen is the result the contract pays.
+/// @dev Quality (1-100) comes from exit velocity + contact timing, and velo from the mash
+///      meter. Both are reported by the client, so a script can always claim 100: it plays
+///      like a perfect batter. The table is built for that. A higher quality never lowers
+///      the chance of any result at or above pop, homer, bomb or slam, so the best the
+///      client can do is play perfectly, and a perfect swing is a fair, capped edge:
+///      0.8% slams against 0.2% at the bottom. The arcade's daily swing cap holds for
+///      people and scripts alike. A swing under POWER_LINE exit velo can't produce a bomb
+///      or slam.
 library DerbyOdds {
     uint8 internal constant WHIFF = 0;
     uint8 internal constant FOUL = 1;
@@ -23,14 +26,16 @@ library DerbyOdds {
     uint8 internal constant POWER_LINE = 60;
 
     /// @notice Cumulative odds (basis points) for [foul, pop, homer, bomb, slam],
-    ///         interpolated linearly between quality 0 and quality 100.
+    ///         interpolated linearly between quality 0 and quality 100. Every threshold
+    ///         falls as quality rises, so better contact is never worse.
+    ///         Quality 100: foul 10%, pop 25%, homer 54.2%, bomb 10%, slam 0.8%.
     function thresholds(uint8 quality) internal pure returns (uint256[5] memory c) {
         uint256 q = quality > 100 ? 100 : quality;
         uint256 iq = 100 - q;
-        c[0] = (3000 * iq + 1200 * q) / 100;
-        c[1] = (4500 * iq + 3800 * q) / 100;
-        c[2] = (6002 * iq + 9200 * q) / 100;
-        c[3] = (9880 * iq + 9980 * q) / 100;
+        c[0] = (3000 * iq + 1000 * q) / 100;
+        c[1] = (5000 * iq + 3500 * q) / 100;
+        c[2] = (9500 * iq + 8920 * q) / 100;
+        c[3] = (9980 * iq + 9920 * q) / 100;
         c[4] = 10000;
     }
 

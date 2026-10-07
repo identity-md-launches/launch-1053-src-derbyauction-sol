@@ -16,8 +16,8 @@ def deploy(bytecode):
 arbsys=art('Mocks.sol','LiveArbSys')['deployedBytecode']['object']
 rpc('anvil_setCode',['0x0000000000000000000000000000000000000064', arbsys])
 imd=deploy(art('Mocks.sol','MockIMD')['bytecode']['object'])
-enc=subprocess.check_output(['cast','abi-encode','c(address,address,uint256,uint256,address,bytes32,bytes32)',
-    acct, imd, str(15*10**16), str(5*10**17), '0xa0Ee7A142d267C1f36714E4a8F75612F20a79720', '0x'+'00'*32, '0x'+'00'*32]).decode().strip()
+enc=subprocess.check_output(['cast','abi-encode','c(address,address,uint256,uint256)',
+    acct, imd, str(15*10**16), str(5*10**17)]).decode().strip()
 derby=deploy(art('SwarmDerby.sol','SwarmDerby')['bytecode']['object']+enc[2:])
 # mint 10 IMD to player
 data=subprocess.check_output(['cast','calldata','mint(address,uint256)',acct,str(10*10**18)]).decode().strip()
