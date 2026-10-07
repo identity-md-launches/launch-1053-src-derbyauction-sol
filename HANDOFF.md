@@ -133,7 +133,12 @@ tip on the explorer, and that the button moves on to the next open day or disapp
 - `withdrawOps` releases the 5% ops share (Robinhood IMD).
 - Once things are stable, move `owner` to a multisig: `transferOwnership(multisig)`, then the
   multisig calls `acceptOwnership()`. Ownership cannot be renounced.
-- Site updates: change `dev/game.html`, rebuild, push, and rerun step 6 on the new commit
-  with the same `ipfs` name. The new site replaces the old one under that name. Dry-run with
-  `POST /requests/check` first. `job.continue` cannot pin a new commit (it refuses `repoUrl`
-  and `baseCommit`), and only the wallet that paid the hosting job can pay for it.
+- Site updates: change the files (for the game, `dev/game.html`, then rebuild), commit and
+  push. Do not rerun step 6: a new `job.open` starts a new project, and IMD hosts it under a
+  suffixed name (`swarm-derby-<4 hex>`), not under `swarm-derby`. To keep the name, send a
+  `job.continue` with `parentJobId` = the hosting project's newest job (`project.head` on
+  `GET /jobs/:id`) and `"ipfs": true`. It refuses `repoUrl` and `baseCommit`, so give it a
+  `refine-project` step whose `paths` are the changed files and whose objective replaces each
+  one with its raw GitHub file at the pushed commit, byte for byte, with a sha256 acceptance
+  criterion. Then add the `import-site` and `site-content-check` steps as in step 6. Only the
+  wallet that paid the hosting job can pay. Dry-run with `POST /requests/check` first.
