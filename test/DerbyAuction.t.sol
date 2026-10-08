@@ -464,6 +464,31 @@ contract DerbyAuctionTest is Test {
         sale.settle(DAY);
     }
 
+    /// Two wallets alternate minimum bids every 299 seconds. Extensions stop at 19:00 UTC,
+    /// so the auction settles before the theme day and the owner can still veto it.
+    function test_antiSnipeStopsAtOneHourSoVetoStaysOpen() public {
+        uint256 latest = _end(DAY) + sale.MAX_EXTENSION();
+        vm.warp(_end(DAY) - 1);
+        _bid(DAY, alice, 2 ether);
+        address next = bob;
+        while (_state(DAY).end < latest) {
+            vm.warp(_state(DAY).end - 1);
+            _bid(DAY, next, sale.minNextBid(DAY));
+            next = next == bob ? alice : bob;
+        }
+        assertEq(_state(DAY).end, latest);
+        vm.warp(latest - 1);
+        _bid(DAY, next, sale.minNextBid(DAY));
+        assertEq(_state(DAY).end, latest);
+        vm.warp(latest);
+        vm.expectRevert(DerbyAuction.BidClosed.selector);
+        sale.bid(DAY, 100 ether, _answers());
+        sale.settle(DAY);
+        assertLt(block.timestamp, DAY * 1 days);
+        sale.veto(DAY);
+        assertTrue(_state(DAY).vetoed);
+    }
+
     function test_settleZeroFeeExactlyAndOnlyOnce() public {
         vm.expectRevert(DerbyAuction.TooEarly.selector);
         sale.settle(DAY);

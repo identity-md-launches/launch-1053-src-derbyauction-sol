@@ -190,8 +190,9 @@ Replace the repo, pinned commit, and owner placeholders with the actual launch v
 
 Auctions use UTC theme-day numbers. They start at 18:00 two days before the theme day and
 end at 18:00 the day before it, with repeatable five-minute anti-snipe extensions. Extensions
-are uncapped, so an extended auction can reduce the six-hour build buffer. Answers are
-operator input; the page must only display text from screened, published theme packs.
+stop at 19:00 UTC (`MAX_EXTENSION`), so at least five hours remain for the build and the veto.
+Answers are operator input; the page must only display text from screened, published theme
+packs.
 
 Anyone can settle an ended auction and pay its bonus once `dayClosed(0, day)` is true;
 SwarmDerby's own pot need not have been settled. A nonempty arcade board pays the caller
@@ -243,7 +244,7 @@ WP3 Done-when evidence (function names in `test/DerbyAuction.t.sol`):
 |---|---|
 | 1. Bid amount, increment, time and answers | `test_bidMinimumAndIncrementRoundUp`, `test_openDayAndBidTimeBoundaries`, `test_answerLengthsAndEnums`, `test_everyForbiddenByteRejectedInEveryString` |
 | 2. Outbid, failed and self-raise refunds | `test_outbidAndSelfRaiseRefundPreviousBid`, `test_failedRefundAccumulatesAndWithdrawsOnlyOnce`, `test_falseAndMalformedRefundsDoNotBlockBids` |
-| 3. Repeated anti-sniping | `test_antiSnipeExtendsRepeatedlyAndKeepsOtherDaysIndependent` |
+| 3. Repeated anti-sniping, stopped at 19:00 UTC | `test_antiSnipeExtendsRepeatedlyAndKeepsOtherDaysIndependent`, `test_antiSnipeStopsAtOneHourSoVetoStaysOpen` |
 | 4. Zero/1 IMD fees, repeat and empty settlement | `test_settleZeroFeeExactlyAndOnlyOnce`, `test_settleOneIMDFeeAndSettingsApplyOnlyAtSettlement`, `test_emptyAuctionSettlesWithoutTakingCarry` |
 | 5. Real closure, tip and top-three split | `test_realSwingsPayOnlyAfterArcadeDayClosedAndOnlyTopThree` |
 | 6. Agent isolation, short/empty boards and carry | `test_agentScoresAndOtherDaysNeverAffectArcadeBonus`, `test_onePlayerCarriesUnfilledSharesIntoNextAuction`, `test_twoPlayersCarryUnfilledShareIntoNextAuction`, `test_emptyArcadeWithAgentPlayersCarriesEverythingWithoutTip`, `test_failedPrizeAndRoundingDustCarryWithoutBlockingOthers` |

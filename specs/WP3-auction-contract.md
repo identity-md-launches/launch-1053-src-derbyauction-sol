@@ -39,6 +39,7 @@ Only league `0` (arcade) is used.
 | `MIN_INCREMENT_BPS` | `500` | new lead ≥ lead × 1.05 |
 | `CLOSE_OFFSET` | `64800` | 18:00 UTC (6 h build buffer) |
 | `ANTI_SNIPE` | `300` | 5 min |
+| `MAX_EXTENSION` | `3600` | extensions stop at 19:00 UTC (5 h build and veto buffer) |
 | `MAX_BUILD_FEE` | `1e18` | |
 | `RECLAIM_AFTER` | `7 days` | after the theme day ends |
 | `TIP_BPS` | `50` | 0.5% to whoever pays the bonus |
@@ -50,7 +51,8 @@ Auctions are keyed by **theme day** `D` (UTC day number, `timestamp / 86400`), t
 winner's theme runs and the bonus is played for.
 
 - `start(D) = (D − 2) · 86400 + CLOSE_OFFSET` (18:00 UTC two days before)
-- `end(D) = (D − 1) · 86400 + CLOSE_OFFSET`, plus anti-snipe extensions (stored per day)
+- `end(D) = (D − 1) · 86400 + CLOSE_OFFSET`, plus anti-snipe extensions (stored per day), never
+  later than `(D − 1) · 86400 + CLOSE_OFFSET + MAX_EXTENSION`
 - `openDay() = (block.timestamp − CLOSE_OFFSET) / 86400 + 2`
 
 ## Bid answers
@@ -83,7 +85,7 @@ operator's job wallet and the whole bid goes to players. `studio_` may be any no
 
 | Function | Who | Rules |
 |---|---|---|
-| `bid(uint256 day, uint256 amount, Answers calldata a)` | anyone | `start ≤ now < end`; `amount ≥ MIN_BID` and ≥ lead × 1.05; answers valid; pull `amount`; then refund the previous leader with `_trySend`, crediting `refunds[prev]` if it fails (a failed refund never blocks a bid); if `end − now < ANTI_SNIPE`, set `end = now + ANTI_SNIPE` |
+| `bid(uint256 day, uint256 amount, Answers calldata a)` | anyone | `start ≤ now < end`; `amount ≥ MIN_BID` and ≥ lead × 1.05; answers valid; pull `amount`; then refund the previous leader with `_trySend`, crediting `refunds[prev]` if it fails (a failed refund never blocks a bid); if `end − now < ANTI_SNIPE`, set `end = min(now + ANTI_SNIPE, (D − 1) · 86400 + CLOSE_OFFSET + MAX_EXTENSION)` |
 | `settle(uint256 day)` | anyone | `now ≥ end`, once. Winner: `fee = min(buildFee, amount)` to `studio`; `bonus[day] = amount − fee + carry`; `carry = 0`. No bids: just mark settled |
 | `veto(uint256 day)` | owner | settled, has a winner, not vetoed, `now < day · 86400`. Refund `bonus[day] − carryIn[day]` to the winner (the carried part goes back to `carry`); zero `bonus[day]` |
 | `payBonus(uint256 day)` | anyone | settled, not vetoed, not paid, `bonus[day] > 0`, `derby.dayClosed(0, day)`. Mark paid. Read `board(0, day)`; if empty, move `bonus[day]` to `carry`. Else `tip = bonus · TIP_BPS / 10000` to `msg.sender`; split the rest 60/25/15 to the first three players with `_trySend`; unfilled places, failed sends and dust go to `carry` |
@@ -113,7 +115,8 @@ the arcade league directly, the same as the arcade pot today.
 1. [ ] Bids below 2 IMD, under +5%, before start, after end, or with bad answers revert.
 2. [ ] Outbid refunds land; a failing refund is credited and withdrawable; raising your own
        lead refunds your previous bid.
-3. [ ] A bid in the last 5 minutes extends the end, repeatedly.
+3. [ ] A bid in the last 5 minutes extends the end, repeatedly, but never past 19:00 UTC; the
+       owner can still `veto` the day after the longest extension.
 4. [ ] `settle` with fee 0 and with fee 1 IMD splits exactly; settling twice reverts; empty
        auctions settle.
 5. [ ] `payBonus` reverts until the real SwarmDerby reports `dayClosed(0, day)`, then pays

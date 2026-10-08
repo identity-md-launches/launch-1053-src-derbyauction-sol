@@ -90,7 +90,7 @@ Content rules:
 
 | Time | |
 |---|---|
-| 18:00 | auction closes; `settle(day)` |
+| 18:00 | auction closes (19:00 at the latest, after extensions); `settle(day)` |
 | 18:15 | job sent |
 | ~19:15 | typical finish (builds have taken 40–60 min) |
 | by 21:00 | published; preview to the owner. Time for one send-back (another `job.continue`) |

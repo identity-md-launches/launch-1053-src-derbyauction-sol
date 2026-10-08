@@ -14,7 +14,7 @@ payment, goes back to asking.
 
 | Time | Who | Step |
 |---|---|---|
-| 18:00 | operator (anyone can) | `settle(D)` on DerbyAuction for tomorrow's theme day `D` |
+| 18:00 | operator (anyone can) | `settle(D)` on DerbyAuction for tomorrow's theme day `D` (after the last extension; 19:00 at the latest) |
 | 18:05 | operator | read the winning `Bid`; screen the answers (WP5) |
 | 18:15 | operator | send the WP5 `job.continue` |
 | ~19:15 | swarm | pack built, site republished |

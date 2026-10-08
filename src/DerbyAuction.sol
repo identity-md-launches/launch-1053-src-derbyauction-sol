@@ -19,6 +19,9 @@ contract DerbyAuction {
     uint256 public constant MIN_INCREMENT_BPS = 500;
     uint256 public constant CLOSE_OFFSET = 64800;
     uint256 public constant ANTI_SNIPE = 300;
+    /// @notice Anti-snipe extensions stop one hour after the regular close (19:00 UTC), so the
+    ///         build buffer and the owner's veto window stay at least five hours.
+    uint256 public constant MAX_EXTENSION = 3600;
     uint256 public constant MAX_BUILD_FEE = 1e18;
     uint256 public constant RECLAIM_AFTER = 7 days;
     uint256 public constant TIP_BPS = 50;
@@ -163,7 +166,11 @@ contract DerbyAuction {
         _checkAnswers(a);
         address previous = sale.leader;
         uint256 previousAmount = sale.amount;
-        if (end - block.timestamp < ANTI_SNIPE) end = block.timestamp + ANTI_SNIPE;
+        if (end - block.timestamp < ANTI_SNIPE) {
+            end = block.timestamp + ANTI_SNIPE;
+            uint256 latest = (day - 1) * 1 days + CLOSE_OFFSET + MAX_EXTENSION;
+            if (end > latest) end = latest;
+        }
         sale.leader = msg.sender;
         sale.amount = amount;
         sale.end = end;
