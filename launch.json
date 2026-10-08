@@ -1,0 +1,16 @@
+{
+  "kind": "evm_contracts",
+  "contracts": [
+    {
+      "contract": "DerbyAuction",
+      "constructorArgs": [
+        "$owner",
+        "0x5F7Bb59365ce557C26dbcAa4EE9d39A4b95B7127",
+        "0xBa58BC6b5aCf8043DAEa2Bf1BF6C1c09cF84b03C",
+        "$owner",
+        "0"
+      ]
+    }
+  ],
+  "notes": "Deploy only DerbyAuction from src/DerbyAuction.sol to Robinhood Chain. Constructor arguments are owner, existing IMD address, existing derby address, studio and build fee, in that order. The launch owner controls the application and is the initial studio; the initial build fee is zero. SwarmDerby and DerbyOdds are not deployed. No token, distributor, pool, ETH funding or initialization calls are included."
+}
