@@ -48,7 +48,9 @@ contract SwarmDerbyTest is Test {
     function setUp() public {
         vm.etch(address(100), address(new MockArbSys()).code);
         arb.setBlock(1_000);
-        vm.chainId(4663);
+        // A local chain id: Foundry 1.8.5 and later intercept ArbSys on 4663 (Robinhood Chain),
+        // which bypasses the etched MockArbSys.
+        vm.chainId(31337);
         vm.warp(T0);
         imd = new MockIMD();
         session = vm.addr(sessionPk);
