@@ -540,18 +540,94 @@ contract DerbyAuctionTest is Test {
         sale.payBonus(DAY + 1);
     }
 
-    function test_failedStudioPaymentLeavesAuctionUnsettled() public {
+    function test_failedStudioPaymentIsCreditedAndSettlementGoesOn() public {
         sale.setBuildFee(1 ether);
         _bid(DAY, alice, 2 ether);
         vm.warp(_end(DAY));
         imd.setFailure(studio, 1);
-        vm.expectRevert(DerbyAuction.TransferFailed.selector);
+        vm.expectEmit(true, false, false, true, address(sale));
+        emit DerbyAuction.RefundCredited(studio, 1 ether);
         sale.settle(DAY);
-        assertFalse(_state(DAY).settled);
-        assertEq(_state(DAY).bonus, 0);
-        sale.setStudio(carol);
+        assertTrue(_state(DAY).settled);
+        assertEq(_state(DAY).bonus, 1 ether);
+        assertEq(sale.refunds(studio), 1 ether);
+        assertEq(imd.balanceOf(address(sale)), 2 ether);
+        sale.veto(DAY);
+        assertEq(imd.balanceOf(alice), 1 ether);
+        imd.setFailure(studio, 0);
+        vm.prank(studio);
+        sale.withdrawRefund();
+        assertEq(imd.balanceOf(studio), 1 ether);
+        assertEq(imd.balanceOf(address(sale)), 0);
+    }
+
+    function test_lateSettleKeepsTheFullReclaimGraceForTheBoard() public {
+        _bid(DAY, alice, 10 ether);
+        vm.warp(DAY * 1 days);
+        _board(3);
+        _close(DAY);
+        vm.warp(_grace(DAY) + 1);
         sale.settle(DAY);
-        assertEq(imd.balanceOf(carol), 1 ether);
+        uint256 settledAt = block.timestamp;
+        assertEq(sale.settledAt(DAY), settledAt);
+        vm.prank(alice);
+        vm.expectRevert(DerbyAuction.TooEarly.selector);
+        sale.reclaim(DAY);
+        vm.warp(settledAt + 7 days);
+        vm.expectRevert(DerbyAuction.TooEarly.selector);
+        sale.reclaim(DAY);
+        uint256 snap = vm.snapshotState();
+        vm.warp(settledAt + 7 days + 1);
+        sale.reclaim(DAY);
+        assertEq(imd.balanceOf(alice), 10 ether);
+        vm.revertToState(snap);
+        _pay(DAY);
+        assertEq(imd.balanceOf(payer), 0.05 ether);
+        assertEq(imd.balanceOf(_player(0)), 5.97 ether);
+        assertEq(imd.balanceOf(_player(1)), 2.4875 ether);
+        assertEq(imd.balanceOf(_player(2)), 1.4925 ether);
+        assertEq(imd.balanceOf(alice), 0);
+    }
+
+    function test_settleOnOrAfterThemeDayKeepsCarryForLaterBoards() public {
+        _bid(DAY, alice, 10 ether);
+        vm.warp(_end(DAY));
+        _bid(DAY + 1, bob, 2 ether);
+        sale.settle(DAY);
+        _close(DAY);
+        _pay(DAY);
+        assertEq(sale.carry(), 10 ether);
+        // Nobody settled DAY + 1 at its close; it is settled when its theme day starts.
+        assertEq(block.timestamp, (DAY + 1) * 1 days);
+        sale.settle(DAY + 1);
+        assertEq(_state(DAY + 1).bonus, 2 ether);
+        assertEq(sale.carryIn(DAY + 1), 0);
+        assertEq(sale.carry(), 10 ether);
+        uint256 next = DAY + 3;
+        vm.warp(_start(next));
+        _bid(next, carol, 3 ether);
+        vm.warp(next * 1 days - 1);
+        sale.settle(next);
+        assertEq(_state(next).bonus, 13 ether);
+        assertEq(sale.carryIn(next), 10 ether);
+        assertEq(sale.carry(), 0);
+    }
+
+    function test_openDayNamesTheExtendedDayUntilItCloses() public {
+        vm.warp(_end(DAY) - 1);
+        _bid(DAY, alice, 2 ether);
+        uint256 extendedEnd = _state(DAY).end;
+        assertEq(extendedEnd, _end(DAY) + 299);
+        vm.warp(_end(DAY));
+        assertEq(sale.openDay(), DAY);
+        _bid(DAY, bob, 3 ether);
+        vm.warp(_state(DAY).end - 1);
+        assertEq(sale.openDay(), DAY);
+        vm.warp(_state(DAY).end);
+        assertEq(sale.openDay(), DAY + 1);
+        vm.expectRevert(DerbyAuction.BidClosed.selector);
+        sale.bid(DAY, 4 ether, _answers());
+        assertEq(_state(DAY + 1).end, _end(DAY + 1));
     }
 
     function test_realSwingsPayOnlyAfterArcadeDayClosedAndOnlyTopThree() public {

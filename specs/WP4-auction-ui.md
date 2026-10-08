@@ -64,7 +64,9 @@ the top-3 payout estimates.
 
 Next to the existing `settleNextDay` button: for each recent day with
 `auction(day).settled && !paid && !vetoed && bonus > 0` and `derby.dayClosed(0, day)`, offer
-`PAY BONUS · EARN <0.5%> IMD` → `staticCall` then `payBonus(day)`.
+`PAY BONUS · EARN <0.5%> IMD` → `staticCall` then `payBonus(day)`. For each recent day whose
+auction has ended with a leader but is not settled, offer `SETTLE` → `staticCall` then
+`settle(day)`.
 
 ## Rules
 

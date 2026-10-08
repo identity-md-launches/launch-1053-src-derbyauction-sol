@@ -55,6 +55,8 @@ contract DerbyAuction {
     mapping(address => uint256) public refunds;
     /// @notice Historical carry included at settlement, never refundable to the bidder.
     mapping(uint256 => uint256) public carryIn;
+    /// @notice When a day with a winner was settled. The reclaim grace starts no earlier than this.
+    mapping(uint256 => uint256) public settledAt;
     mapping(uint256 => Auction) internal _auctions;
     mapping(uint256 => Answers) internal _answers;
     bool private _entered;
@@ -128,10 +130,14 @@ contract DerbyAuction {
         emit OwnershipTransferred(address(0), owner_);
     }
 
+    /// @notice The earliest day that takes bids now: during an anti-snipe extension this is the
+    ///         extended day, not the day whose auction started at the regular close.
     function openDay() external view returns (uint256) {
         // The first partial UTC day has no representable two-days-prior start.
         if (block.timestamp < CLOSE_OFFSET) return 1;
-        return (block.timestamp - CLOSE_OFFSET) / 1 days + 2;
+        uint256 day = (block.timestamp - CLOSE_OFFSET) / 1 days + 2;
+        if (day > 2 && block.timestamp < _end(day - 1)) return day - 1;
+        return day;
     }
 
     function auction(uint256 day)
@@ -189,10 +195,16 @@ contract DerbyAuction {
         uint256 fee;
         if (a.leader != address(0)) {
             fee = buildFee < a.amount ? buildFee : a.amount;
-            carryIn[day] = carry;
-            a.bonus = a.amount - fee + carry;
-            carry = 0;
-            _send(studio, fee);
+            settledAt[day] = block.timestamp;
+            a.bonus = a.amount - fee;
+            // Carry is for a board that is still open: a day settled late keeps only its own bid.
+            if (block.timestamp < day * 1 days) {
+                carryIn[day] = carry;
+                a.bonus += carry;
+                carry = 0;
+            }
+            // A studio that cannot be paid is credited, so settlement never depends on it.
+            _refund(studio, fee);
         }
         emit Settled(day, a.leader, a.amount, fee, a.bonus);
     }
@@ -243,11 +255,14 @@ contract DerbyAuction {
         emit BonusPaid(day, winners, amounts, msg.sender, tip, carried);
     }
 
-    /// @notice Anyone can return an unpaid, expired bonus to its original winner.
+    /// @notice Anyone can return an unpaid, expired bonus to its original winner. The grace runs
+    ///         from the end of the theme day or from settlement, whichever is later.
     function reclaim(uint256 day) external nonReentrant {
         Auction storage a = _auctions[day];
         _checkRefundable(a);
-        if (block.timestamp <= (day + 1) * 1 days + RECLAIM_AFTER) revert TooEarly();
+        uint256 from = (day + 1) * 1 days;
+        if (settledAt[day] > from) from = settledAt[day];
+        if (block.timestamp <= from + RECLAIM_AFTER) revert TooEarly();
         a.paid = true; // terminal: a reclaimed bonus cannot also be paid or reclaimed again
         uint256 amount = _releaseBonus(day, a);
         _refund(a.leader, amount);

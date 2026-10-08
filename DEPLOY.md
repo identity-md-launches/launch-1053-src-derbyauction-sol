@@ -146,8 +146,11 @@ the queue; nothing expires.
 
 ## Auction
 
-`src/DerbyAuction.sol` implements WP3; it does not modify or deploy SwarmDerby. An IMD audit
-is required before launch. No deployment was performed for this work package.
+`src/DerbyAuction.sol` implements WP3; it does not modify or deploy SwarmDerby. IMD audit job
+`928b670b` (on commit `f797a19`) found 1 medium, 3 low and 3 info items. The medium and the
+three lows are fixed: the reclaim grace starts no earlier than settlement, a late settle takes
+no carry, a studio that cannot be paid is credited, and `openDay()` names a day that is still
+extended. The info items are operating notes under **Known limits**. Nothing is deployed yet.
 
 Constructor arguments, in order:
 
@@ -198,55 +201,59 @@ Anyone can settle an ended auction and pay its bonus once `dayClosed(0, day)` is
 SwarmDerby's own pot need not have been settled. A nonempty arcade board pays the caller
 0.5%, then splits the remainder 60/25/15 among its first three players. Missing places,
 failed prize transfers, rounding dust, and an empty board's entire bonus become carry.
-The next auction settled **with a winner** takes that carry; empty auctions leave it alone.
-Outbid refunds that cannot be sent become credits in `refunds`, withdrawn by their owners
-using `withdrawRefund()`. A failed caller tip reverts the payout so another caller can retry.
+The next auction settled **with a winner** before its theme day begins takes that carry;
+empty auctions and auctions settled late leave it alone. Outbid refunds and a studio fee
+that cannot be sent become credits in `refunds`, withdrawn by their owners using
+`withdrawRefund()`. A failed caller tip reverts the payout so another caller can retry.
 
 The owner can veto a settled auction before its theme day begins, set the studio and fee,
 and transfer ownership in two steps. Anyone can reclaim an unpaid bonus strictly after
-seven days following the theme day's end. Veto and reclaim return the winner's bid **less
-any fee already paid**, with failed refunds credited; they return inherited carry to the
-carry pool. Neither operation gives carried prize money to the bidder. Reclaim marks the
-auction terminal (`paid`); veto marks it `vetoed`. There is no owner sweep of player funds.
+seven days following the theme day's end or the settlement, whichever is later. Veto and
+reclaim return the winner's bid **less any fee already paid**, with failed refunds credited;
+they return inherited carry to the carry pool. Neither operation gives carried prize money
+to the bidder. Reclaim marks the auction terminal (`paid`); veto marks it `vetoed`. There is
+no owner sweep of player funds.
 
-**Known limit:** the bonus goes to the arcade board's top 3. The arcade cap is per wallet,
-and bots can play the arcade league directly, the same as the arcade pot today.
+**Known limits:**
 
-Local checks with **Foundry 1.5.1** (scratch outputs avoid changing configuration):
+- The bonus goes to the arcade board's top 3. The arcade cap is per wallet, and bots can
+  play the arcade league directly, the same as the arcade pot today.
+- Settle each auction before midnight UTC. After that the owner cannot veto it and it takes
+  no carry. `settle` pays no tip, so the operator (or the site's `SETTLE` button) settles.
+- Pay each bonus after its day closes, also on an empty board, which earns no tip. Seven
+  days after the later of the theme day's end and the settlement, the winner can reclaim an
+  unpaid bonus, and from then on `payBonus` and `reclaim` race.
+- Owner trust: `settle` reads `buildFee` and `studio`, so a fee change applies to bids
+  already made, and a veto or reclaim returns the bid less the fee already paid. The launch
+  fee is 0.
+
+Local checks (scratch outputs avoid changing configuration):
 
 ```sh
 forge build --out test/scratch/out --cache-path test/scratch/cache
 forge test --out test/scratch/out --cache-path test/scratch/cache
 ```
 
-`test/DerbyAuction.t.sol` covers WP3's eight Done-when items, including real SwarmDerby
-commit/reveal swings and a randomized conservation check after bids, settlement, veto,
-bonus payout, reclaim and refund withdrawal. The original 54 SwarmDerby tests remain
-unchanged. These checks are not a substitute for the required pre-launch IMD audit.
+`test/DerbyAuction.t.sol` covers WP3's eight Done-when items and the audit fixes, including
+real SwarmDerby commit/reveal swings and a randomized conservation check after bids,
+settlement, veto, bonus payout, reclaim and refund withdrawal. Forge 1.8.3 with Solidity
+0.8.26 passes **94 tests, 0 failed** (40 auction tests and the 54 SwarmDerby tests). Each
+fuzz test runs 256 cases.
 
-Verification results: Foundry 1.5.1 / Solidity 0.8.26 built successfully and passed **90
-tests, 0 failed, 0 skipped** (36 auction tests plus the original 54). Each fuzz test ran
-256 generated cases; the auction and settlement fuzz tests also replayed an earlier saved
-case successfully. The build and full test run used `--offline`. No Solidity dependencies
-were added, and no configuration or frozen game/test file was changed.
-
-**Runner compatibility:** the installed Foundry 1.8.5 builds successfully and passes all
-36 auction tests, but 18 original SwarmDerby tests fail because its native
-[`arbBlockNumber` interception](https://github.com/foundry-rs/foundry/blob/v1.8.5/crates/evm/evm/src/inspectors/stack.rs#L2087)
-overrides the original tests' etched ArbSys mock after they select chain 4663. Use Foundry
-1.5.1 to reproduce the passing full suite. The new auction tests use a vanilla local chain
-ID and the same MockArbSys pattern, so their real SwarmDerby integrations work with either
-version. The original tests have deliberately been preserved, as required by R1.
+**Chain id in tests:** Foundry 1.8.5 and later
+[intercept `arbBlockNumber`](https://github.com/foundry-rs/foundry/blob/v1.8.5/crates/evm/evm/src/inspectors/stack.rs#L2087)
+on chain 4663, which bypasses an etched ArbSys mock. Both test files therefore select chain
+id 31337 before they etch MockArbSys. That is the only change to `test/SwarmDerby.t.sol`.
 
 WP3 Done-when evidence (function names in `test/DerbyAuction.t.sol`):
 
 | Item | Tests |
 |---|---|
-| 1. Bid amount, increment, time and answers | `test_bidMinimumAndIncrementRoundUp`, `test_openDayAndBidTimeBoundaries`, `test_answerLengthsAndEnums`, `test_everyForbiddenByteRejectedInEveryString` |
+| 1. Bid amount, increment, time and answers | `test_bidMinimumAndIncrementRoundUp`, `test_openDayAndBidTimeBoundaries`, `test_openDayNamesTheExtendedDayUntilItCloses`, `test_answerLengthsAndEnums`, `test_everyForbiddenByteRejectedInEveryString` |
 | 2. Outbid, failed and self-raise refunds | `test_outbidAndSelfRaiseRefundPreviousBid`, `test_failedRefundAccumulatesAndWithdrawsOnlyOnce`, `test_falseAndMalformedRefundsDoNotBlockBids` |
 | 3. Repeated anti-sniping, stopped at 19:00 UTC | `test_antiSnipeExtendsRepeatedlyAndKeepsOtherDaysIndependent`, `test_antiSnipeStopsAtOneHourSoVetoStaysOpen` |
-| 4. Zero/1 IMD fees, repeat and empty settlement | `test_settleZeroFeeExactlyAndOnlyOnce`, `test_settleOneIMDFeeAndSettingsApplyOnlyAtSettlement`, `test_emptyAuctionSettlesWithoutTakingCarry` |
+| 4. Zero/1 IMD fees, repeat and empty settlement | `test_settleZeroFeeExactlyAndOnlyOnce`, `test_settleOneIMDFeeAndSettingsApplyOnlyAtSettlement`, `test_emptyAuctionSettlesWithoutTakingCarry`, `test_failedStudioPaymentIsCreditedAndSettlementGoesOn` |
 | 5. Real closure, tip and top-three split | `test_realSwingsPayOnlyAfterArcadeDayClosedAndOnlyTopThree` |
-| 6. Agent isolation, short/empty boards and carry | `test_agentScoresAndOtherDaysNeverAffectArcadeBonus`, `test_onePlayerCarriesUnfilledSharesIntoNextAuction`, `test_twoPlayersCarryUnfilledShareIntoNextAuction`, `test_emptyArcadeWithAgentPlayersCarriesEverythingWithoutTip`, `test_failedPrizeAndRoundingDustCarryWithoutBlockingOthers` |
-| 7. Veto/reclaim restrictions and carry protection | `test_vetoOwnerOnlyBeforeThemeDayReturnsOwnNetBidNotCarry`, `test_vetoRejectsUnsettledEmptyAndThemeDayBoundary`, `test_reclaimGraceBoundaryReturnsOwnNetBidNotCarryToWinner`, `test_reclaimRejectsUnsettledEmptyAndAlreadyPaidAuctions` |
-| 8. Conservation, unchanged regression suite and constructor isolation | `testFuzz_conservationAcrossAuctionSequences`, `test_constructorStoresArgumentsWithoutAnyDependencyCalls`, plus all 54 tests in `test/SwarmDerby.t.sol` (Foundry 1.5.1) |
+| 6. Agent isolation, short/empty boards and carry | `test_agentScoresAndOtherDaysNeverAffectArcadeBonus`, `test_onePlayerCarriesUnfilledSharesIntoNextAuction`, `test_twoPlayersCarryUnfilledShareIntoNextAuction`, `test_emptyArcadeWithAgentPlayersCarriesEverythingWithoutTip`, `test_failedPrizeAndRoundingDustCarryWithoutBlockingOthers`, `test_settleOnOrAfterThemeDayKeepsCarryForLaterBoards` |
+| 7. Veto/reclaim restrictions and carry protection | `test_vetoOwnerOnlyBeforeThemeDayReturnsOwnNetBidNotCarry`, `test_vetoRejectsUnsettledEmptyAndThemeDayBoundary`, `test_reclaimGraceBoundaryReturnsOwnNetBidNotCarryToWinner`, `test_reclaimRejectsUnsettledEmptyAndAlreadyPaidAuctions`, `test_lateSettleKeepsTheFullReclaimGraceForTheBoard` |
+| 8. Conservation, the SwarmDerby regression suite and constructor isolation | `testFuzz_conservationAcrossAuctionSequences`, `test_constructorStoresArgumentsWithoutAnyDependencyCalls`, plus all 54 tests in `test/SwarmDerby.t.sol` |

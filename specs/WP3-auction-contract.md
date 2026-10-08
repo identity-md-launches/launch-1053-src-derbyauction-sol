@@ -53,7 +53,8 @@ winner's theme runs and the bonus is played for.
 - `start(D) = (D − 2) · 86400 + CLOSE_OFFSET` (18:00 UTC two days before)
 - `end(D) = (D − 1) · 86400 + CLOSE_OFFSET`, plus anti-snipe extensions (stored per day), never
   later than `(D − 1) · 86400 + CLOSE_OFFSET + MAX_EXTENSION`
-- `openDay() = (block.timestamp − CLOSE_OFFSET) / 86400 + 2`
+- `openDay()`: the earliest day that takes bids now. `d = (block.timestamp − CLOSE_OFFSET) / 86400 + 2`,
+  or `d − 1` while an anti-snipe extension keeps day `d − 1` open
 
 ## Bid answers
 
@@ -86,17 +87,20 @@ operator's job wallet and the whole bid goes to players. `studio_` may be any no
 | Function | Who | Rules |
 |---|---|---|
 | `bid(uint256 day, uint256 amount, Answers calldata a)` | anyone | `start ≤ now < end`; `amount ≥ MIN_BID` and ≥ lead × 1.05; answers valid; pull `amount`; then refund the previous leader with `_trySend`, crediting `refunds[prev]` if it fails (a failed refund never blocks a bid); if `end − now < ANTI_SNIPE`, set `end = min(now + ANTI_SNIPE, (D − 1) · 86400 + CLOSE_OFFSET + MAX_EXTENSION)` |
-| `settle(uint256 day)` | anyone | `now ≥ end`, once. Winner: `fee = min(buildFee, amount)` to `studio`; `bonus[day] = amount − fee + carry`; `carry = 0`. No bids: just mark settled |
+| `settle(uint256 day)` | anyone | `now ≥ end`, once. Winner: `settledAt[day] = now`; `fee = min(buildFee, amount)` to `studio`, credited to `refunds[studio]` if the send fails; `bonus[day] = amount − fee`, plus `carry` (then `carry = 0`) only if `now < day · 86400`. No bids: just mark settled |
 | `veto(uint256 day)` | owner | settled, has a winner, not vetoed, `now < day · 86400`. Refund `bonus[day] − carryIn[day]` to the winner (the carried part goes back to `carry`); zero `bonus[day]` |
 | `payBonus(uint256 day)` | anyone | settled, not vetoed, not paid, `bonus[day] > 0`, `derby.dayClosed(0, day)`. Mark paid. Read `board(0, day)`; if empty, move `bonus[day]` to `carry`. Else `tip = bonus · TIP_BPS / 10000` to `msg.sender`; split the rest 60/25/15 to the first three players with `_trySend`; unfilled places, failed sends and dust go to `carry` |
-| `reclaim(uint256 day)` | anyone | not paid, not vetoed, `now > (day + 1) · 86400 + RECLAIM_AFTER`: return `bonus[day] − carryIn[day]` to the winner, carried part to `carry` |
+| `reclaim(uint256 day)` | anyone | not paid, not vetoed, `now > max((day + 1) · 86400, settledAt[day]) + RECLAIM_AFTER`: return `bonus[day] − carryIn[day]` to the winner, carried part to `carry` |
 | `withdrawRefund()` | bidder | pays `refunds[msg.sender]` |
 | `setStudio`, `setBuildFee` | owner | fee ≤ `MAX_BUILD_FEE`; applies to auctions settled later |
 | `transferOwnership`, `acceptOwnership` | owner / pending | two-step |
-| views | | `auction(day)` (leader, amount, end, settled, vetoed, paid, bonus), `answers(day)`, `openDay()`, `minNextBid(day)`, `carry()`, `refunds(addr)` |
+| views | | `auction(day)` (leader, amount, end, settled, vetoed, paid, bonus), `answers(day)`, `openDay()`, `minNextBid(day)`, `carry()`, `carryIn(day)`, `settledAt(day)`, `refunds(addr)` |
 
 `carryIn[day]` records how much `carry` was folded into that day's bonus, so vetoes and
-reclaims only return the winner's own money.
+reclaims only return the winner's own money. A day settled after its theme day has started
+takes no carry: its board is already known, so carry stays for a later board. The reclaim
+grace starts no earlier than settlement, so a late settle still gives the board seven days to
+be paid.
 
 ## Events
 
@@ -118,13 +122,13 @@ the arcade league directly, the same as the arcade pot today.
 3. [ ] A bid in the last 5 minutes extends the end, repeatedly, but never past 19:00 UTC; the
        owner can still `veto` the day after the longest extension.
 4. [ ] `settle` with fee 0 and with fee 1 IMD splits exactly; settling twice reverts; empty
-       auctions settle.
+       auctions settle; a studio that cannot be paid is credited and does not block `settle`.
 5. [ ] `payBonus` reverts until the real SwarmDerby reports `dayClosed(0, day)`, then pays
        tip + 60/25/15 to that day's arcade top 3 (integration test with real swings).
 6. [ ] Agent-league scores never affect the bonus; 1–2 players and an empty board move the
-       rest to `carry`, and the next settled auction picks it up.
-7. [ ] `veto` (owner only, before the theme day) and `reclaim` (after the grace period, only
-       if unpaid) return only the winner's own bid.
+       rest to `carry`, and the next auction settled before its theme day picks it up.
+7. [ ] `veto` (owner only, before the theme day) and `reclaim` (after the grace period, which
+       starts no earlier than settlement, only if unpaid) return only the winner's own bid.
 8. [ ] Fuzz: after any sequence of bids, settles, vetoes and payouts, the contract's IMD
        balance equals current lead + unpaid bonuses + carry + credited refunds; and all 54
        existing tests still pass.
